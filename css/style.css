@@ -253,3 +253,54 @@ footer {
   padding-top: 10px;
 }
 footer a { color: #666; }
+
+/* 登録モード切り替え */
+.mode-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: #fff;
+  border: 1px solid #ccc;
+  border-radius: 20px;
+  cursor: pointer;
+  font-size: 13px;
+  user-select: none;
+}
+.mode-toggle:hover { background: #f0f0f0; }
+.mode-toggle input { cursor: pointer; }
+
+.mode-banner {
+  background: #ffe082;
+  color: #5d4037;
+  padding: 10px 16px;
+  border-radius: 4px;
+  margin-bottom: 15px;
+  font-size: 14px;
+  font-weight: bold;
+  border-left: 4px solid #ff9800;
+}
+
+/* 登録モード中のキャンバス枠を強調 */
+body.register-mode #canvas {
+  border: 3px solid #ff9800;
+  cursor: copy;
+}
+
+/* 所持色アイテム: 種別表示 */
+.owned-item .type-badge {
+  display: inline-block;
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  margin-right: 4px;
+  font-weight: bold;
+}
+.type-badge.beads {
+  background: #4a90e2;
+  color: #fff;
+}
+.type-badge.rgb {
+  background: #ff9800;
+  color: #fff;
+}

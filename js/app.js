@@ -13,17 +13,43 @@ const historyDiv = document.getElementById('history');
 const ownedListDiv = document.getElementById('ownedList');
 const ownedCountEl = document.getElementById('ownedCount');
 const toastEl = document.getElementById('toast');
+const registerModeCheckbox = document.getElementById('registerMode');
+const modeBanner = document.getElementById('modeBanner');
 
 // ========== 状態 ==========
 let img = null;
 let zoom = parseInt(zoomSlider.value, 10);
 let COLORS = [];
-let clickHistory = []; // {pixel:{r,g,b,x,y}, candidates:[...]}
-let ownedSet = new Set(); // 所持色のキー (A/R/PN品番のいずれか優先, なければname)
+let clickHistory = [];
+// 所持色: [{type:'beads', key:'A05'}, {type:'rgb', rgb:[r,g,b]}, ...]
+let ownedColors = [];
 
-// 色を一意識別するキーを作る
+// ========== ユーティリティ ==========
 function colorKey(c) {
   return c.A || c.R || c.PN || c.name;
+}
+
+// 所持色オブジェクトから一意IDを生成 (重複判定用)
+function ownedId(owned) {
+  if (owned.type === 'beads') return 'beads:' + owned.key;
+  if (owned.type === 'rgb') return 'rgb:' + owned.rgb.join(',');
+  return '';
+}
+
+// 指定色が所持済みかチェック (品番一致 or RGB完全一致)
+function isOwned(color) {
+  const key = colorKey(color);
+  return ownedColors.some(o => {
+    if (o.type === 'beads') return o.key === key;
+    if (o.type === 'rgb') {
+      return o.rgb[0] === color.rgb[0] && o.rgb[1] === color.rgb[1] && o.rgb[2] === color.rgb[2];
+    }
+    return false;
+  });
+}
+
+function toHex(r, g, b) {
+  return '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('').toUpperCase();
 }
 
 // ========== カラーデータ読込 ==========
@@ -59,12 +85,30 @@ fileInput.addEventListener('change', (e) => {
   reader.readAsDataURL(f);
 });
 
+// 登録モード切替
+registerModeCheckbox.addEventListener('change', () => {
+  if (registerModeCheckbox.checked) {
+    document.body.classList.add('register-mode');
+    modeBanner.style.display = 'block';
+  } else {
+    document.body.classList.remove('register-mode');
+    modeBanner.style.display = 'none';
+  }
+});
+
 canvas.addEventListener('click', (e) => {
   if (!img) return;
   const p = getPixelAt(e.clientX, e.clientY);
-  const top = findNearest(p.r, p.g, p.b, 3);
-  clickHistory.unshift({ pixel: p, candidates: top });
-  renderHistory();
+
+  if (registerModeCheckbox.checked) {
+    // 登録モード: そのままRGBを所持色登録
+    addOwnedRgb(p.r, p.g, p.b);
+  } else {
+    // 通常モード: マッチングして履歴に追加
+    const top = findNearest(p.r, p.g, p.b, 3);
+    clickHistory.unshift({ pixel: p, candidates: top });
+    renderHistory();
+  }
 });
 
 canvas.addEventListener('mousemove', (e) => {
@@ -89,7 +133,6 @@ canvas.addEventListener('mouseleave', () => {
   hoverInfo.textContent = '';
 });
 
-// 履歴コピー・クリア
 document.getElementById('exportHistoryBtn').addEventListener('click', exportHistory);
 document.getElementById('clearHistoryBtn').addEventListener('click', () => {
   if (clickHistory.length === 0) return;
@@ -99,19 +142,17 @@ document.getElementById('clearHistoryBtn').addEventListener('click', () => {
   }
 });
 
-// 所持色エクスポート・インポート・クリア
 document.getElementById('exportOwnedBtn').addEventListener('click', exportOwned);
 document.getElementById('importOwnedBtn').addEventListener('click', openImportModal);
 document.getElementById('clearOwnedBtn').addEventListener('click', () => {
-  if (ownedSet.size === 0) return;
+  if (ownedColors.length === 0) return;
   if (confirm('所持色をすべてクリアしますか?')) {
-    ownedSet.clear();
+    ownedColors = [];
     renderOwned();
-    renderHistory(); // ★マーク更新
+    renderHistory();
   }
 });
 
-// モーダル
 document.getElementById('importCancelBtn').addEventListener('click', closeImportModal);
 document.getElementById('importConfirmBtn').addEventListener('click', confirmImport);
 
@@ -145,10 +186,6 @@ function findNearest(r, g, b, n = 3) {
   return list.slice(0, n);
 }
 
-function toHex(r, g, b) {
-  return '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('').toUpperCase();
-}
-
 // ========== クリック履歴の描画 ==========
 function renderHistory() {
   historyDiv.innerHTML = '';
@@ -160,18 +197,18 @@ function renderHistory() {
     let candHtml = '';
     entry.candidates.forEach((c, i) => {
       const codes = [c.A, c.R, c.PN].filter(x => x).join(' / ');
-      const isOwned = ownedSet.has(colorKey(c));
-      const ownedMark = isOwned ? '★ ' : '';
-      const btnLabel = isOwned ? '登録済' : '+追加';
-      const btnClass = isOwned ? 'add-btn added' : 'add-btn';
+      const owned = isOwned(c);
+      const ownedMark = owned ? '★ ' : '';
+      const btnLabel = owned ? '登録済' : '+追加';
+      const btnClass = owned ? 'add-btn added' : 'add-btn';
       candHtml += `
-        <div class="candidate ${isOwned ? 'owned' : ''}">
+        <div class="candidate ${owned ? 'owned' : ''}">
           <div class="csw" style="background:rgb(${c.rgb.join(',')})"></div>
           <div class="info">
             <b>${i + 1}位</b> ${ownedMark}${c.name} (距離${c.dist.toFixed(1)})<br>
             <span style="color:#555;">${codes} | RGB(${c.rgb.join(',')})</span>
           </div>
-          <button class="${btnClass}" data-key="${colorKey(c)}" data-cand-idx="${i}" data-entry-idx="${idx}">${btnLabel}</button>
+          <button class="${btnClass}" data-cand-idx="${i}" data-entry-idx="${idx}">${btnLabel}</button>
         </div>`;
     });
 
@@ -187,20 +224,18 @@ function renderHistory() {
       <button class="close-btn">×</button>
     `;
 
-    // ×ボタン
     item.querySelector('.close-btn').addEventListener('click', () => {
       clickHistory.splice(idx, 1);
       renderHistory();
     });
 
-    // +追加ボタン
     item.querySelectorAll('.add-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         if (btn.classList.contains('added')) return;
         const entryIdx = parseInt(btn.dataset.entryIdx, 10);
         const candIdx = parseInt(btn.dataset.candIdx, 10);
         const color = clickHistory[entryIdx].candidates[candIdx];
-        addOwned(color);
+        addOwnedBeads(color);
       });
     });
 
@@ -209,55 +244,106 @@ function renderHistory() {
 }
 
 // ========== 所持色管理 ==========
-function addOwned(color) {
-  const key = colorKey(color);
-  if (ownedSet.has(key)) return;
-  ownedSet.add(key);
+// ピクセルピコのビーズ色を登録
+function addOwnedBeads(color) {
+  const newItem = { type: 'beads', key: colorKey(color) };
+  const id = ownedId(newItem);
+  if (ownedColors.some(o => ownedId(o) === id)) {
+    showToast(`「${color.name}」は既に登録済みです`);
+    return;
+  }
+  ownedColors.push(newItem);
   renderOwned();
   renderHistory();
   showToast(`「${color.name}」を所持色に追加しました`);
 }
 
-function removeOwned(key) {
-  ownedSet.delete(key);
+// RGBそのものを登録 (独自色用)
+function addOwnedRgb(r, g, b) {
+  const newItem = { type: 'rgb', rgb: [r, g, b] };
+  const id = ownedId(newItem);
+  if (ownedColors.some(o => ownedId(o) === id)) {
+    showToast(`RGB(${r},${g},${b}) は既に登録済みです`);
+    return;
+  }
+  ownedColors.push(newItem);
+  renderOwned();
+  renderHistory();
+  showToast(`RGB(${r},${g},${b}) ${toHex(r, g, b)} を登録しました`);
+}
+
+function removeOwned(idStr) {
+  ownedColors = ownedColors.filter(o => ownedId(o) !== idStr);
   renderOwned();
   renderHistory();
 }
 
 function renderOwned() {
-  ownedCountEl.textContent = ownedSet.size;
+  ownedCountEl.textContent = ownedColors.length;
   ownedListDiv.innerHTML = '';
 
-  // ownedSetのキーに対応するCOLORSのエントリを引く
-  const ownedColors = [];
-  ownedSet.forEach(key => {
-    const c = COLORS.find(c => colorKey(c) === key);
-    if (c) ownedColors.push(c);
+  // 描画用にビューモデルへ変換
+  const view = ownedColors.map(o => {
+    if (o.type === 'beads') {
+      const c = COLORS.find(c => colorKey(c) === o.key);
+      if (!c) {
+        return {
+          id: ownedId(o),
+          type: 'beads',
+          name: `(不明:${o.key})`,
+          codes: o.key,
+          rgb: [200, 200, 200],
+          sortKey: 'zzz' + o.key
+        };
+      }
+      return {
+        id: ownedId(o),
+        type: 'beads',
+        name: c.name,
+        codes: [c.A, c.R, c.PN].filter(x => x).join(' / '),
+        rgb: c.rgb,
+        sortKey: c.name
+      };
+    } else {
+      return {
+        id: ownedId(o),
+        type: 'rgb',
+        name: `RGB(${o.rgb.join(',')})`,
+        codes: toHex(o.rgb[0], o.rgb[1], o.rgb[2]),
+        rgb: o.rgb,
+        sortKey: 'zzz_rgb_' + o.rgb.join(',')
+      };
+    }
   });
-  // 名前順でソート
-  ownedColors.sort((a, b) => a.name.localeCompare(b.name, 'ja'));
 
-  ownedColors.forEach(c => {
-    const codes = [c.A, c.R, c.PN].filter(x => x).join(' / ');
+  // 種別優先 → 名前順でソート (ビーズ → RGB登録の順)
+  view.sort((a, b) => {
+    if (a.type !== b.type) return a.type === 'beads' ? -1 : 1;
+    return a.sortKey.localeCompare(b.sortKey, 'ja');
+  });
+
+  view.forEach(v => {
     const item = document.createElement('div');
     item.className = 'owned-item';
+    const badge = v.type === 'beads'
+      ? '<span class="type-badge beads">ビーズ</span>'
+      : '<span class="type-badge rgb">RGB</span>';
     item.innerHTML = `
-      <div class="csw" style="background:rgb(${c.rgb.join(',')})"></div>
+      <div class="csw" style="background:rgb(${v.rgb.join(',')})"></div>
       <div class="info">
-        ${c.name}<br>
-        <span style="color:#777;font-size:11px;">${codes}</span>
+        ${badge}${v.name}<br>
+        <span style="color:#777;font-size:11px;">${v.codes}</span>
       </div>
-      <button class="remove" data-key="${colorKey(c)}">削除</button>
+      <button class="remove">削除</button>
     `;
     item.querySelector('.remove').addEventListener('click', () => {
-      removeOwned(colorKey(c));
+      removeOwned(v.id);
     });
     ownedListDiv.appendChild(item);
   });
 }
 
 // ========== エクスポート / インポート ==========
-// クリック履歴をテキスト化
 function exportHistory() {
   if (clickHistory.length === 0) {
     showToast('履歴が空です');
@@ -272,7 +358,7 @@ function exportHistory() {
     lines.push(`[${i + 1}] 位置(${p.x},${p.y}) クリック色: RGB(${p.r},${p.g},${p.b}) ${toHex(p.r, p.g, p.b)}`);
     entry.candidates.forEach((c, j) => {
       const codes = [c.A, c.R, c.PN].filter(x => x).join(' / ');
-      const owned = ownedSet.has(colorKey(c)) ? ' ★所持' : '';
+      const owned = isOwned(c) ? ' ★所持' : '';
       lines.push(`  ${j + 1}位: ${c.name} [${codes}] RGB(${c.rgb.join(',')}) 距離${c.dist.toFixed(1)}${owned}`);
     });
     lines.push('');
@@ -280,17 +366,16 @@ function exportHistory() {
   copyToClipboard(lines.join('\n'), '履歴をクリップボードにコピーしました');
 }
 
-// 所持色エクスポート: シンプルなJSON+識別ヘッダ
 function exportOwned() {
-  if (ownedSet.size === 0) {
+  if (ownedColors.length === 0) {
     showToast('所持色が登録されていません');
     return;
   }
   const data = {
     type: 'pixelpico-owned-colors',
-    version: 1,
-    count: ownedSet.size,
-    keys: Array.from(ownedSet).sort()
+    version: 2,
+    count: ownedColors.length,
+    items: ownedColors
   };
   const text = JSON.stringify(data, null, 2);
   copyToClipboard(text, '所持色データをクリップボードにコピーしました');
@@ -316,32 +401,55 @@ function confirmImport() {
     if (data.type !== 'pixelpico-owned-colors') {
       throw new Error('形式が正しくありません(type不一致)');
     }
-    if (!Array.isArray(data.keys)) {
-      throw new Error('keysが配列ではありません');
+
+    let imported = [];
+
+    // version 2形式: items配列
+    if (Array.isArray(data.items)) {
+      imported = data.items;
     }
-    // 既存に追加する形でマージ (既存を消したい場合は事前にクリアしてもらう)
-    let added = 0, unknown = 0;
-    data.keys.forEach(k => {
-      const found = COLORS.find(c => colorKey(c) === k);
-      if (found) {
-        if (!ownedSet.has(k)) {
-          ownedSet.add(k);
-          added++;
-        }
+    // version 1形式 (旧): keys配列 → beadsとして取り込み
+    else if (Array.isArray(data.keys)) {
+      imported = data.keys.map(k => ({ type: 'beads', key: k }));
+    } else {
+      throw new Error('items または keys が見つかりません');
+    }
+
+    let added = 0, dup = 0, invalid = 0;
+    imported.forEach(item => {
+      // バリデーション
+      if (item.type === 'beads' && typeof item.key === 'string') {
+        // OK
+      } else if (item.type === 'rgb' && Array.isArray(item.rgb) && item.rgb.length === 3) {
+        // OK
       } else {
-        unknown++;
+        invalid++;
+        return;
+      }
+      const id = ownedId(item);
+      if (ownedColors.some(o => ownedId(o) === id)) {
+        dup++;
+      } else {
+        ownedColors.push(item);
+        added++;
       }
     });
+
     renderOwned();
     renderHistory();
     closeImportModal();
-    showToast(`${added}色をインポートしました${unknown > 0 ? ` (未知の品番${unknown}件はスキップ)` : ''}`);
+    let msg = `${added}色をインポートしました`;
+    const notes = [];
+    if (dup > 0) notes.push(`重複${dup}件`);
+    if (invalid > 0) notes.push(`不正な形式${invalid}件`);
+    if (notes.length > 0) msg += ` (${notes.join(', ')}をスキップ)`;
+    showToast(msg);
   } catch (e) {
     alert('インポートに失敗しました: ' + e.message);
   }
 }
 
-// ========== ユーティリティ ==========
+// ========== クリップボード ==========
 function copyToClipboard(text, successMsg) {
   if (navigator.clipboard && window.isSecureContext) {
     navigator.clipboard.writeText(text).then(

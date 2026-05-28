@@ -452,8 +452,8 @@ function renderHistory() {
           : '<span class="type-badge rgb">RGB</span>';
         const sectionClass = isBestMatch ? 'owned-section best-match' : 'owned-section';
         const title = isBestMatch
-          ? `所持色での最近傍 <span class="best-match-badge">✨ 手持ちがベストマッチ</span>`
-          : `所持色での最近傍`;
+          ? `所持色の中で最も近い色 <span class="best-match-badge">✨ 手持ちがベストマッチ</span>`
+          : `所持色の中で最も近い色`;
         ownedHtml = `
           <div class="${sectionClass}">
             <div class="section-title">${title}</div>

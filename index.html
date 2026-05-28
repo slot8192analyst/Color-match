@@ -10,7 +10,7 @@
 
   <h1>ピクセルピコ カラーマッチ</h1>
   <p class="desc">
-    画像をアップロード → 拡大表示の画像をクリックすると、その位置のRGBから最も近いビーズ色を3候補表示します。
+    画像をアップロード → ドラッグで画像を動かして照準に合わせ、「この位置の色を取得」ボタンで最も近いビーズ色を提案します。
   </p>
 
   <div class="controls">
@@ -22,21 +22,41 @@
     </label>
     <label class="mode-toggle">
       <input type="checkbox" id="registerMode">
-      <span>🎨 登録モード (クリックでRGBを所持色登録)</span>
+      <span>🎨 登録モード (取得でRGBを所持色登録)</span>
     </label>
   </div>
 
   <div id="modeBanner" class="mode-banner" style="display:none;">
-    登録モード中: クリックした位置のRGB色がそのまま所持色として登録されます
+    登録モード中: 照準位置のRGB色がそのまま所持色として登録されます
   </div>
 
   <div id="wrap">
 
     <!-- 左: 画像表示 -->
     <div id="left">
-      <canvas id="canvas"></canvas>
+      <div id="viewport">
+        <canvas id="canvas"></canvas>
+        <!-- 照準 (マス目つき十字) -->
+        <div id="reticle">
+          <div class="reticle-grid"></div>
+          <div class="reticle-cross-h"></div>
+          <div class="reticle-cross-v"></div>
+          <div class="reticle-center"></div>
+        </div>
+        <!-- ミニマップ -->
+        <div id="minimap">
+          <canvas id="minimapCanvas"></canvas>
+          <div id="minimapMarker"></div>
+        </div>
+      </div>
+
+      <div class="pick-area">
+        <button id="pickBtn" class="btn btn-pick">🎯 この位置の色を取得</button>
+        <span id="pickInfo" class="pick-info"></span>
+      </div>
+
       <div class="hover-area">
-        <span class="label">ホバー中の色:</span>
+        <span class="label">照準周辺の拡大:</span>
         <canvas id="magnifier"></canvas>
         <div id="hoverInfo"></div>
       </div>
@@ -45,7 +65,7 @@
     <!-- 中央: クリック履歴 -->
     <div id="center">
       <div class="panel-header">
-        <span class="label">クリック履歴 (新しい順)</span>
+        <span class="label">取得履歴 (新しい順)</span>
         <div class="panel-btns">
           <button id="exportHistoryBtn" class="btn">📋 結果をコピー</button>
           <button id="clearHistoryBtn" class="btn btn-sub">クリア</button>
@@ -66,7 +86,8 @@
       </div>
       <p class="hint">
         ・登録モードOFFで候補の「+追加」→ ピクセルピコのビーズ色を登録<br>
-        ・登録モードONで画像クリック → 任意のRGBを直接登録(独自色など)
+        ・登録モードONで取得ボタン → 任意のRGBを直接登録(独自色など)<br>
+        ・所持色はブラウザに自動保存されます
       </p>
       <div id="ownedList"></div>
     </div>
